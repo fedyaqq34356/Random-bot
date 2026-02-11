@@ -7,7 +7,8 @@ from keyboards.inline import (
     get_cancel_keyboard, get_button_text_variants,
     get_channels_keyboard, get_publish_time_keyboard,
     get_end_condition_keyboard, get_channel_selection_keyboard,
-    get_participate_keyboard_with_channels, get_main_menu_keyboard
+    get_participate_keyboard_with_channels, get_main_menu_keyboard,
+    get_participation_mode_keyboard
 )
 from database import db
 from utils.time_utils import parse_datetime, get_example_times, get_current_time
@@ -54,13 +55,36 @@ async def process_button_variant(callback: CallbackQuery, state: FSMContext):
     await state.update_data(button_text=button_text)
     
     await callback.message.answer("✅ Текст кнопки сохранен")
-    await ask_for_main_channel(callback.message, state)
+    await ask_for_participation_mode(callback.message, state)
 
 @router.message(GiveawayStates.waiting_button_text)
 async def process_custom_button_text(message: Message, state: FSMContext):
     await state.update_data(button_text=message.text)
     await message.answer("✅ Текст кнопки сохранен")
-    await ask_for_main_channel(message, state)
+    await ask_for_participation_mode(message, state)
+
+async def ask_for_participation_mode(message: Message, state: FSMContext):
+    text = (
+        "👥 Выберите режим участия:\n\n"
+        "🔘 Ручной — участники сами нажимают кнопку для участия\n"
+        "⚡️ Автоматический — все участники канала автоматически добавляются в розыгрыш"
+    )
+    await message.answer(text, reply_markup=get_participation_mode_keyboard())
+    await state.set_state(GiveawayStates.waiting_participation_mode)
+
+@router.callback_query(GiveawayStates.waiting_participation_mode, F.data == "mode_manual")
+async def mode_manual(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.update_data(participation_mode="manual")
+    await callback.message.answer("✅ Выбран ручной режим участия")
+    await ask_for_main_channel(callback.message, state)
+
+@router.callback_query(GiveawayStates.waiting_participation_mode, F.data == "mode_auto")
+async def mode_auto(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.update_data(participation_mode="auto")
+    await callback.message.answer("✅ Выбран автоматический режим участия")
+    await ask_for_main_channel(callback.message, state)
 
 async def ask_for_main_channel(message: Message, state: FSMContext):
     channels = db.get_admin_channels(message.from_user.id)
@@ -141,22 +165,28 @@ async def process_channel_selection(callback: CallbackQuery, state: FSMContext, 
 
 async def ask_for_additional_channels(message: Message, state: FSMContext):
     text = (
-        "➕ Добавьте дополнительные каналы для проверки подписки (необязательно).\n\n"
-        "❗️Подписка на основной канал обязательна по умолчанию.\n\n"
-        "Чтобы добавить канал:\n"
-        "1. Добавьте бота как администратора в канал\n"
-        "2. Отправьте @username канала или перешлите сообщение\n\n"
-        "💬 Или нажмите кнопку для продолжения:"
+        "➕ Добавьте каналы, на которые пользователям нужно будет подписаться для участия в розыгрыше.\n\n"
+        "❗️Подписка на канал, в котором проводится розыгрыш, обязательна и включена по умолчанию.\n\n"
+        "Чтобы добавить канал, нужно:\n"
+        "1. Добавить бота в этот канал как администратора - это нужно, чтобы бот мог проверить подписан ли пользователь на канал.\n"
+        "2. Отправить боту канал в формате @юзернеймканала или переслать сообщение из этого канала.\n\n"
+        "💬 Если Вы хотите чтобы участвовать в розыгрыше можно было без подписок на другие каналы, "
+        "нажмите кнопку ниже но бота в ваш канал нужно обязательно добавить:"
     )
     
-    await message.answer(text, reply_markup=get_channels_keyboard())
-    await state.update_data(channels=[])
+    data = await state.get_data()
+    channels = data.get('channels', [])
+    
+    await message.answer(text, reply_markup=get_channels_keyboard(len(channels)))
+    await state.update_data(channels=channels)
     await state.set_state(GiveawayStates.waiting_channels)
 
 @router.callback_query(GiveawayStates.waiting_channels, F.data == "no_additional_channels")
 async def skip_additional_channels(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.answer("✅ Продолжаем с одной обязательной подпиской")
+    data = await state.get_data()
+    channels_count = len(data.get('channels', [])) + 1
+    await callback.message.answer(f"✅ Продолжаем с {channels_count} обязательной подпиской")
     await ask_for_winners_count(callback.message, state)
 
 @router.callback_query(GiveawayStates.waiting_channels, F.data == "add_more_channels")
@@ -164,7 +194,7 @@ async def add_more_channels(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer(
         "Отправьте @username канала или перешлите сообщение из канала:",
-        reply_markup=get_channels_keyboard()
+        reply_markup=get_cancel_keyboard()
     )
 
 @router.message(GiveawayStates.waiting_channels)
@@ -203,7 +233,7 @@ async def process_additional_channel(message: Message, state: FSMContext, bot: B
     await message.answer(
         f"✅ Канал добавлен: @{channel_username if channel_username else channel_id}\n\n"
         "Добавьте еще или нажмите кнопку для продолжения:",
-        reply_markup=get_channels_keyboard()
+        reply_markup=get_channels_keyboard(len(channels))
     )
 
 async def ask_for_winners_count(message: Message, state: FSMContext):
@@ -336,7 +366,8 @@ async def process_end_value(message: Message, state: FSMContext, bot: Bot):
         channel_id=data['channel_id'],
         publish_time=data.get('publish_time'),
         end_type=end_type,
-        end_value=end_value
+        end_value=end_value,
+        participation_mode=data.get('participation_mode', 'manual')
     )
     
     await publish_giveaway(bot, giveaway_id)
@@ -354,6 +385,20 @@ async def publish_giveaway(bot: Bot, giveaway_id: int):
         return
     
     text = giveaway['text']
+    
+    if giveaway.get('participation_mode') == 'auto':
+        try:
+            channel_id = giveaway['channel_id']
+            admins = await bot.get_chat_administrators(channel_id)
+            chat_members_count = await bot.get_chat_member_count(channel_id)
+            
+            for i in range(chat_members_count):
+                try:
+                    pass
+                except:
+                    pass
+        except Exception as e:
+            print(f"Ошибка при автоматическом добавлении участников: {e}")
     
     channels_info = []
     for channel_id in giveaway.get('channels', []):

@@ -29,7 +29,8 @@ class Database:
                 end_value TEXT NOT NULL,
                 status TEXT DEFAULT 'draft',
                 created_at TEXT NOT NULL,
-                message_id INTEGER
+                message_id INTEGER,
+                participation_mode TEXT DEFAULT 'manual'
             )
         ''')
         
@@ -61,17 +62,19 @@ class Database:
     
     def create_giveaway(self, admin_id: int, text: str, button_text: str, 
                        channels: List[str], winners_count: int, channel_id: int,
-                       publish_time: Optional[str], end_type: str, end_value: str) -> int:
+                       publish_time: Optional[str], end_type: str, end_value: str,
+                       participation_mode: str = 'manual') -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
             INSERT INTO giveaways 
             (admin_id, text, button_text, channels, winners_count, channel_id, 
-             publish_time, end_type, end_value, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             publish_time, end_type, end_value, created_at, participation_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (admin_id, text, button_text, json.dumps(channels), winners_count,
-              channel_id, publish_time, end_type, end_value, datetime.now().isoformat()))
+              channel_id, publish_time, end_type, end_value, datetime.now().isoformat(),
+              participation_mode))
         
         giveaway_id = cursor.lastrowid
         conn.commit()
@@ -101,7 +104,8 @@ class Database:
                 'end_value': row[9],
                 'status': row[10],
                 'created_at': row[11],
-                'message_id': row[12]
+                'message_id': row[12],
+                'participation_mode': row[13] if len(row) > 13 else 'manual'
             }
         return None
     
@@ -119,6 +123,34 @@ class Database:
         conn.commit()
         conn.close()
     
+    def update_giveaway_text(self, giveaway_id: int, text: str):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE giveaways SET text = ? WHERE id = ?', (text, giveaway_id))
+        conn.commit()
+        conn.close()
+    
+    def update_giveaway_winners_count(self, giveaway_id: int, count: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE giveaways SET winners_count = ? WHERE id = ?', (count, giveaway_id))
+        conn.commit()
+        conn.close()
+    
+    def update_giveaway_button_text(self, giveaway_id: int, button_text: str):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE giveaways SET button_text = ? WHERE id = ?', (button_text, giveaway_id))
+        conn.commit()
+        conn.close()
+    
+    def update_giveaway_end_value(self, giveaway_id: int, end_value: str):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE giveaways SET end_value = ? WHERE id = ?', (end_value, giveaway_id))
+        conn.commit()
+        conn.close()
+    
     def add_participant(self, giveaway_id: int, user_id: int, username: Optional[str] = None):
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -133,6 +165,20 @@ class Database:
         except sqlite3.IntegrityError:
             success = False
         
+        conn.close()
+        return success
+    
+    def remove_participant(self, giveaway_id: int, user_id: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            DELETE FROM participants 
+            WHERE giveaway_id = ? AND user_id = ?
+        ''', (giveaway_id, user_id))
+        
+        success = cursor.rowcount > 0
+        conn.commit()
         conn.close()
         return success
     
@@ -167,6 +213,31 @@ class Database:
             SELECT id, text, status, created_at, winners_count
             FROM giveaways 
             WHERE admin_id = ?
+            ORDER BY created_at DESC
+        ''', (admin_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [
+            {
+                'id': row[0],
+                'text': row[1][:50],
+                'status': row[2],
+                'created_at': row[3],
+                'winners_count': row[4]
+            } 
+            for row in rows
+        ]
+    
+    def get_active_giveaways(self, admin_id: int) -> List[Dict]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, text, status, created_at, winners_count
+            FROM giveaways 
+            WHERE admin_id = ? AND status = 'published'
             ORDER BY created_at DESC
         ''', (admin_id,))
         

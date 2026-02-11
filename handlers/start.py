@@ -3,8 +3,9 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from keyboards.inline import get_main_menu_keyboard
+from keyboards.inline import get_main_menu_keyboard, get_user_greeting_keyboard
 from database import db
+from config import config
 
 router = Router()
 
@@ -12,13 +13,23 @@ router = Router()
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     
-    text = (
-        "✋ Приветствуем!\n\n"
-        "Наш бот поможет Вам провести розыгрыш в канале или чате.\n\n"
-        "Готовы создать новый розыгрыш?"
-    )
-    
-    await message.answer(text, reply_markup=get_main_menu_keyboard())
+    if config.is_admin(message.from_user.id):
+        text = (
+            "✋ Приветствуем!\n\n"
+            "Наш бот поможет Вам провести розыгрыш в канале или чате.\n\n"
+            "Готовы создать новый розыгрыш?"
+        )
+        await message.answer(text, reply_markup=get_main_menu_keyboard())
+    else:
+        text = (
+            "Привет! Этот бот-рандомайзер полностью бесплатный и с открытым исходником — "
+            "можно проверить на GitHub https://github.com/fedyaqq34356/Random-bot.git\n\n"
+            "Если бот тебе нравится, поддержи разработчика на чай — 20 грн помогают делать "
+            "обновления и исправлять баги ☕️\n\n"
+            f"💳 Номер карты: <code>{config.CARD_NUMBER}</code>\n"
+            "(Нажмите чтобы скопировать)"
+        )
+        await message.answer(text, parse_mode="HTML", reply_markup=get_user_greeting_keyboard())
 
 @router.callback_query(F.data == "my_giveaways")
 async def show_my_giveaways(callback: CallbackQuery):
