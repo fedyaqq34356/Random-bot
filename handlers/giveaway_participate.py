@@ -2,7 +2,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 
 from database import db
-from utils.channel_utils import check_user_subscribed
+from utils.channel_utils import check_user_subscribed, get_channel_info
 
 router = Router()
 
@@ -23,23 +23,26 @@ async def participate_in_giveaway(callback: CallbackQuery, bot: Bot):
     required_channels = [giveaway['channel_id']] + giveaway.get('channels', [])
     
     not_subscribed = []
-    for channel in required_channels:
-        if isinstance(channel, str) and channel.startswith('@'):
-            channel_id = f"@{channel}"
-        else:
-            channel_id = channel if isinstance(channel, int) else giveaway['channel_id']
-        
+    not_subscribed_names = []
+    
+    for channel_id in required_channels:
         try:
             is_subscribed = await check_user_subscribed(bot, channel_id, callback.from_user.id)
             if not is_subscribed:
-                not_subscribed.append(channel)
-        except:
+                not_subscribed.append(channel_id)
+                channel_info = await get_channel_info(bot, channel_id)
+                if channel_info and channel_info.get('username'):
+                    not_subscribed_names.append(f"@{channel_info['username']}")
+                else:
+                    not_subscribed_names.append(f"ID: {channel_id}")
+        except Exception as e:
+            print(f"Ошибка при проверке канала {channel_id}: {e}")
             continue
     
     if not_subscribed:
-        channels_text = ", ".join([str(ch) for ch in not_subscribed])
+        channels_text = ", ".join(not_subscribed_names)
         await callback.answer(
-            f"❌ Вы должны быть подписаны на все каналы: {channels_text}",
+            f"❌ Вы должны быть подписаны на все каналы!\n\nПодпишитесь на: {channels_text}",
             show_alert=True
         )
         return

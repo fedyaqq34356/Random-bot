@@ -20,9 +20,10 @@ def get_button_text_variants():
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
     ])
 
-def get_no_channels_keyboard():
+def get_channels_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Розыгрыш без обязательных подписок", callback_data="no_required_channels")],
+        [InlineKeyboardButton(text="✅ Продолжить с одной обязательной подпиской", callback_data="no_additional_channels")],
+        [InlineKeyboardButton(text="➕ Добавить еще канал", callback_data="add_more_channels")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
     ])
 
@@ -44,6 +45,27 @@ def get_participate_keyboard(giveaway_id: int, button_text: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=button_text, callback_data=f"participate_{giveaway_id}")]
     ])
+
+def get_participate_keyboard_with_channels(giveaway_id: int, button_text: str, channels_info: list):
+    buttons = []
+    
+    if channels_info:
+        for channel in channels_info:
+            if channel.get('username'):
+                channel_url = f"https://t.me/{channel['username']}"
+                channel_name = channel.get('title', f"@{channel['username']}")
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"📢 Подписаться: {channel_name}", 
+                        url=channel_url
+                    )
+                ])
+    
+    buttons.append([
+        InlineKeyboardButton(text=button_text, callback_data=f"participate_{giveaway_id}")
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_channel_selection_keyboard(channels: list):
     buttons = []
