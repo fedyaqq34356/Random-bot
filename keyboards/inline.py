@@ -7,7 +7,15 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton(text="Мои розыгрыши", callback_data="my_giveaways")],
         [InlineKeyboardButton(text="Мои каналы", callback_data="my_channels")],
         [InlineKeyboardButton(text="👥 Управление участниками", callback_data="manage_participants")],
-        [InlineKeyboardButton(text="✏️ Редактировать розыгрыш", callback_data="edit_giveaway")]
+        [InlineKeyboardButton(text="✏️ Редактировать розыгрыш", callback_data="edit_giveaway")],
+        [InlineKeyboardButton(text="📢 Рассылка о розыгрыше", callback_data="broadcast")]
+    ])
+
+
+def get_confirm_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, начать", callback_data="confirm_yes")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="confirm_no")]
     ])
 
 

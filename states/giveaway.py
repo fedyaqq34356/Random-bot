@@ -1,5 +1,6 @@
 from aiogram.fsm.state import State, StatesGroup
 
+
 class GiveawayStates(StatesGroup):
     waiting_text = State()
     waiting_button_text = State()
@@ -11,16 +12,34 @@ class GiveawayStates(StatesGroup):
     waiting_publish_time = State()
     waiting_end_condition = State()
     waiting_end_value = State()
-    
+
     selecting_giveaway_to_manage = State()
     managing_participants = State()
     waiting_participant_to_add = State()
     removing_participant = State()
     viewing_participants = State()
-    
+
     selecting_giveaway_to_edit = State()
     editing_giveaway = State()
     editing_text = State()
     editing_winners_count = State()
     editing_button_text = State()
     editing_end_time = State()
+
+
+class TelethonStates(StatesGroup):
+    api_id = State()
+    api_hash = State()
+    phone = State()
+    code = State()
+    password = State()
+
+
+class BroadcastStates(StatesGroup):
+    selecting_giveaway = State()
+    api_id = State()
+    api_hash = State()
+    phone = State()
+    code = State()
+    password = State()
+    confirming = State()
