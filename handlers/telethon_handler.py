@@ -8,27 +8,12 @@ from keyboards.inline import (
     get_cancel_keyboard, get_main_menu_keyboard,
     get_giveaway_select_keyboard_manage, get_confirm_keyboard
 )
-from services.telethon_auth import start_auth, verify_code, verify_password, cancel_auth
+from services.telethon_auth import start_auth, verify_code, verify_password, cancel_auth, sessions
 from services.telethon_scanner import scan_and_add_participants, broadcast_giveaway
 from database import db
 from logger import logger
 
 router = Router()
-
-
-
-
-async def start_telethon_for_auto(message: Message, state: FSMContext, giveaway_id: int):
-    await state.update_data(purpose="auto", giveaway_id=giveaway_id)
-    await message.answer(
-        "⚡️ Для автоматического добавления участников необходима авторизация вашего аккаунта.\n\n"
-        "Получить API ID и API Hash: https://my.telegram.org/auth\n\n"
-        "Введите API ID:",
-        reply_markup=get_cancel_keyboard()
-    )
-    await state.set_state(TelethonStates.api_id)
-
-
 
 
 @router.callback_query(F.data == "broadcast")
@@ -55,6 +40,13 @@ async def broadcast_giveaway_selected(callback: CallbackQuery, state: FSMContext
     giveaway = db.get_giveaway(giveaway_id)
 
     await state.update_data(purpose="broadcast", giveaway_id=giveaway_id)
+
+    if callback.from_user.id in sessions:
+        client = sessions[callback.from_user.id]["client"]
+        if client.is_connected() and await client.is_user_authorized():
+            await _confirm_broadcast(callback.message, state)
+            return
+
     await callback.message.answer(
         f"📢 Рассылка для розыгрыша:\n{giveaway['text'][:80]}...\n\n"
         "Для рассылки нужна авторизация вашего аккаунта.\n\n"
@@ -151,7 +143,6 @@ async def run_broadcast(callback: CallbackQuery, state: FSMContext):
     giveaway_id = data["giveaway_id"]
     giveaway = db.get_giveaway(giveaway_id)
 
-    from services.telethon_auth import sessions
     if callback.from_user.id not in sessions:
         await callback.message.answer("❌ Сессия истекла, начните заново", reply_markup=get_main_menu_keyboard())
         await state.clear()
@@ -172,7 +163,6 @@ async def run_broadcast(callback: CallbackQuery, state: FSMContext):
 
     sent, failed = await broadcast_giveaway(client, channel_id, message_id, channel_username)
 
-    await cancel_auth(callback.from_user.id)
     await state.clear()
     await callback.message.answer(
         f"✅ Рассылка завершена!\n\n"
@@ -185,11 +175,8 @@ async def run_broadcast(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(BroadcastStates.confirming, F.data == "confirm_no")
 async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await cancel_auth(callback.from_user.id)
     await state.clear()
     await callback.message.answer("❌ Рассылка отменена", reply_markup=get_main_menu_keyboard())
-
-
 
 
 @router.message(TelethonStates.api_id)
@@ -263,7 +250,6 @@ async def _run_auto_scan(message: Message, state: FSMContext):
     giveaway_id = data.get("giveaway_id")
     giveaway = db.get_giveaway(giveaway_id)
 
-    from services.telethon_auth import sessions
     if message.from_user.id not in sessions:
         await message.answer("❌ Сессия истекла", reply_markup=get_main_menu_keyboard())
         await state.clear()
@@ -275,7 +261,6 @@ async def _run_auto_scan(message: Message, state: FSMContext):
 
     added = await scan_and_add_participants(client, giveaway_id, giveaway["channel_id"])
 
-    await cancel_auth(message.from_user.id)
     await state.clear()
     await message.answer(
         f"✅ Готово! Добавлено участников: {added}\n"

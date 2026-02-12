@@ -61,7 +61,7 @@ class Database:
         conn.close()
     
     def create_giveaway(self, admin_id: int, text: str, button_text: str, 
-                       channels: List[str], winners_count: int, channel_id: int,
+                       channels: List[Dict], winners_count: int, channel_id: int,
                        publish_time: Optional[str], end_type: str, end_value: str,
                        participation_mode: str = 'manual') -> int:
         conn = self.get_connection()

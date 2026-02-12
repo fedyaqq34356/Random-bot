@@ -212,16 +212,38 @@ async def process_additional_channel(message: Message, state: FSMContext, bot: B
         await message.answer("❌ Бот не является администратором этого канала")
         return
 
+    await state.update_data(temp_channel_id=channel_id, temp_channel_username=channel_username)
+    await message.answer(
+        f"✅ Канал найден: @{channel_username or channel_id}\n\n"
+        "Теперь отправьте ссылку для подписки (например: https://t.me/your_channel):",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(GiveawayStates.waiting_channel_link)
+
+
+@router.message(GiveawayStates.waiting_channel_link)
+async def process_channel_link(message: Message, state: FSMContext):
+    link = message.text.strip()
+    
+    if not link.startswith('http'):
+        await message.answer("❌ Ссылка должна начинаться с http:// или https://")
+        return
+
     data = await state.get_data()
     channels = data.get('channels', [])
-    channels.append(channel_id)
+    
+    channels.append({
+        'channel_id': data['temp_channel_id'],
+        'link': link
+    })
+    
     await state.update_data(channels=channels)
-
+    
     await message.answer(
-        f"✅ Канал добавлен: @{channel_username or channel_id}",
+        f"✅ Канал добавлен с ссылкой: {link}",
         reply_markup=get_channels_keyboard(len(channels))
     )
-
+    await state.set_state(GiveawayStates.waiting_channels)
 
 async def ask_for_winners_count(message: Message, state: FSMContext):
     await message.answer("🏆 Сколько победителей?", reply_markup=get_cancel_keyboard())
@@ -345,21 +367,25 @@ async def process_end_value(message: Message, state: FSMContext, bot: Bot):
         participation_mode=data.get('participation_mode', 'manual')
     )
 
-    await publish_giveaway(bot, giveaway_id)
-
-    if data.get('participation_mode') == 'auto':
-        await message.answer("✅ Розыгрыш создан и опубликован!")
-        await state.set_state(TelethonStates.api_id)
-        await state.update_data(giveaway_id=giveaway_id, purpose="auto")
-        await message.answer(
-            "⚡️ Теперь авторизуйте свой аккаунт для сканирования участников канала.\n\n"
-            "Получить API ID и API Hash: https://my.telegram.org/auth\n\n"
-            "Введите API ID:",
-            reply_markup=get_cancel_keyboard()
-        )
-    else:
-        await message.answer("✅ Розыгрыш создан и опубликован!", reply_markup=get_main_menu_keyboard())
+    if data.get('publish_time'):
+        await message.answer("✅ Розыгрыш создан! Будет опубликован в запланированное время.", reply_markup=get_main_menu_keyboard())
         await state.clear()
+    else:
+        await publish_giveaway(bot, giveaway_id)
+
+        if data.get('participation_mode') == 'auto':
+            await message.answer("✅ Розыгрыш создан и опубликован!")
+            await state.set_state(TelethonStates.api_id)
+            await state.update_data(giveaway_id=giveaway_id, purpose="auto")
+            await message.answer(
+                "⚡️ Теперь авторизуйте свой аккаунт для сканирования участников канала.\n\n"
+                "Получить API ID и API Hash: https://my.telegram.org/auth\n\n"
+                "Введите API ID:",
+                reply_markup=get_cancel_keyboard()
+            )
+        else:
+            await message.answer("✅ Розыгрыш создан и опубликован!", reply_markup=get_main_menu_keyboard())
+            await state.clear()
 
 
 async def publish_giveaway(bot: Bot, giveaway_id: int):
@@ -368,13 +394,27 @@ async def publish_giveaway(bot: Bot, giveaway_id: int):
         return
 
     channels_info = []
-    for ch_id in giveaway.get('channels', []):
-        try:
-            info = await get_channel_info(bot, ch_id)
-            if info:
-                channels_info.append(info)
-        except Exception as e:
-            logger.error(f"Ошибка канала {ch_id}: {e}")
+    for ch in giveaway.get('channels', []):
+        if isinstance(ch, dict):
+            channels_info.append({
+                'id': ch['channel_id'],
+                'link': ch['link']
+            })
+        else:
+            try:
+                info = await get_channel_info(bot, ch)
+                if info:
+                    if info.get('username'):
+                        link = f"https://t.me/{info['username']}"
+                    else:
+                        clean_id = str(ch).replace('-100', '')
+                        link = f"https://t.me/c/{clean_id}"
+                    channels_info.append({
+                        'id': ch,
+                        'link': link
+                    })
+            except Exception as e:
+                logger.error(f"Ошибка канала {ch}: {e}")
 
     keyboard = get_participate_keyboard_with_channels(
         giveaway_id, giveaway['button_text'], channels_info

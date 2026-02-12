@@ -45,6 +45,40 @@ async def check_time_giveaways(bot: Bot):
         await asyncio.sleep(30)
 
 
+async def check_scheduled_giveaways(bot: Bot):
+    while True:
+        try:
+            tz = pytz.timezone(config.TIMEZONE)
+            now = datetime.now(tz)
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM giveaways WHERE status = 'draft' AND publish_time IS NOT NULL"
+            )
+            rows = cursor.fetchall()
+            conn.close()
+
+            for (giveaway_id,) in rows:
+                giveaway = db.get_giveaway(giveaway_id)
+                if not giveaway:
+                    continue
+
+                publish_dt = datetime.fromisoformat(giveaway['publish_time'])
+                if publish_dt.tzinfo is None:
+                    publish_dt = tz.localize(publish_dt)
+
+                if now >= publish_dt:
+                    logger.info(f"Публикую запланированный розыгрыш {giveaway_id}")
+                    from handlers.giveaway_create import publish_giveaway
+                    await publish_giveaway(bot, giveaway_id)
+
+        except Exception as e:
+            logger.error(f"Ошибка планировщика публикаций: {e}")
+
+        await asyncio.sleep(30)
+
+
 async def _finish_giveaway(bot: Bot, giveaway_id: int):
     giveaway = db.get_giveaway(giveaway_id)
     participants = db.get_participants(giveaway_id)
@@ -83,6 +117,7 @@ async def main():
     logger.info("Бот запущен")
 
     asyncio.create_task(check_time_giveaways(bot))
+    asyncio.create_task(check_scheduled_giveaways(bot))
 
     await dp.start_polling(bot)
 

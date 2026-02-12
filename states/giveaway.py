@@ -8,6 +8,7 @@ class GiveawayStates(StatesGroup):
     waiting_main_channel = State()
     waiting_channel_selection = State()
     waiting_channels = State()
+    waiting_channel_link = State()
     waiting_winners_count = State()
     waiting_publish_time = State()
     waiting_end_condition = State()

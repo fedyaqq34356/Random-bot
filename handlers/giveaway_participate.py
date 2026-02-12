@@ -2,7 +2,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 
 from database import db
-from utils.channel_utils import check_user_subscribed, get_channel_info
+from utils.channel_utils import check_user_subscribed
 
 router = Router()
 
@@ -20,29 +20,42 @@ async def participate_in_giveaway(callback: CallbackQuery, bot: Bot):
         await callback.answer("❌ Розыгрыш не активен", show_alert=True)
         return
     
-    required_channels = [giveaway['channel_id']] + giveaway.get('channels', [])
+    required_channels = []
+    for ch in giveaway.get('channels', []):
+        if isinstance(ch, dict):
+            required_channels.append(ch['channel_id'])
+        else:
+            required_channels.append(ch)
+    
+    required_channels.insert(0, giveaway['channel_id'])
     
     not_subscribed = []
-    not_subscribed_names = []
+    not_subscribed_links = []
     
-    for channel_id in required_channels:
+    for i, channel_id in enumerate(required_channels):
         try:
             is_subscribed = await check_user_subscribed(bot, channel_id, callback.from_user.id)
             if not is_subscribed:
                 not_subscribed.append(channel_id)
-                channel_info = await get_channel_info(bot, channel_id)
-                if channel_info and channel_info.get('username'):
-                    not_subscribed_names.append(f"@{channel_info['username']}")
+                
+                if i > 0:
+                    ch_data = giveaway.get('channels', [])[i-1]
+                    if isinstance(ch_data, dict):
+                        not_subscribed_links.append(ch_data['link'])
+                    else:
+                        clean_id = str(channel_id).replace('-100', '')
+                        not_subscribed_links.append(f"https://t.me/c/{clean_id}")
                 else:
-                    not_subscribed_names.append(f"ID: {channel_id}")
+                    clean_id = str(channel_id).replace('-100', '')
+                    not_subscribed_links.append(f"https://t.me/c/{clean_id}")
         except Exception as e:
             print(f"Ошибка при проверке канала {channel_id}: {e}")
             continue
     
     if not_subscribed:
-        channels_text = ", ".join(not_subscribed_names)
+        channels_text = "\n".join(not_subscribed_links)
         await callback.answer(
-            f"❌ Вы должны быть подписаны на все каналы!\n\nПодпишитесь на: {channels_text}",
+            f"❌ Вы должны быть подписаны на все каналы!\n\nПодпишитесь на:\n{channels_text}",
             show_alert=True
         )
         return

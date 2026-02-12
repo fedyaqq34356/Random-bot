@@ -85,11 +85,11 @@ def get_participate_keyboard(giveaway_id: int, button_text: str):
 def get_participate_keyboard_with_channels(giveaway_id: int, button_text: str, channels_info: list):
     buttons = []
     for channel in channels_info:
-        if channel.get('username'):
-            buttons.append([InlineKeyboardButton(
-                text=f"📢 Подписаться: {channel.get('title', channel['username'])}",
-                url=f"https://t.me/{channel['username']}"
-            )])
+        link = channel.get('link', '')
+        buttons.append([InlineKeyboardButton(
+            text=f"📢 Подписаться",
+            url=link
+        )])
     buttons.append([InlineKeyboardButton(
         text=button_text, callback_data=f"participate_{giveaway_id}"
     )])

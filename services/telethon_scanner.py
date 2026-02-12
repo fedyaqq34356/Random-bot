@@ -1,8 +1,11 @@
 import asyncio
 from telethon import TelegramClient
 from telethon.tl.functions.channels import GetParticipantsRequest
-from telethon.tl.types import ChannelParticipantsSearch, InputPeerChannel
-from telethon.errors import FloodWaitError, UserPrivacyRestrictedError, InputUserDeactivatedError
+from telethon.tl.types import ChannelParticipantsSearch, ChannelParticipantsAdmins
+from telethon.errors import (
+    FloodWaitError, UserPrivacyRestrictedError, InputUserDeactivatedError,
+    PeerIdInvalidError, UserIsBlockedError, ChatWriteForbiddenError
+)
 
 from database import db
 from logger import logger
@@ -18,6 +21,20 @@ async def scan_and_add_participants(client: TelegramClient, giveaway_id: int, ch
     except Exception as e:
         logger.error(f"Не удалось получить канал {channel_id}: {e}")
         return 0
+
+    admin_ids = set()
+    try:
+        admins_result = await client(GetParticipantsRequest(
+            channel=entity,
+            filter=ChannelParticipantsAdmins(),
+            offset=0,
+            limit=100,
+            hash=0
+        ))
+        admin_ids = {user.id for user in admins_result.users}
+        logger.info(f"Найдено {len(admin_ids)} администраторов канала")
+    except Exception as e:
+        logger.warning(f"Не удалось получить список администраторов: {e}")
 
     while True:
         try:
@@ -40,7 +57,7 @@ async def scan_and_add_participants(client: TelegramClient, giveaway_id: int, ch
             break
 
         for user in participants.users:
-            if user.bot or user.deleted:
+            if user.bot or user.deleted or user.id in admin_ids:
                 continue
             success = db.add_participant(giveaway_id, user.id, user.username)
             if success:
@@ -113,17 +130,19 @@ async def broadcast_giveaway(
                 sent += 1
                 await asyncio.sleep(2)
             except FloodWaitError as e:
-                logger.warning(f"FloodWait {e.seconds}s при отправке")
+                logger.warning(f"FloodWait {e.seconds}s при отправке пользователю {user.id}")
                 await asyncio.sleep(e.seconds)
                 try:
                     await client.send_message(user.id, text)
                     sent += 1
+                    await asyncio.sleep(2)
                 except Exception:
                     failed += 1
-            except (UserPrivacyRestrictedError, InputUserDeactivatedError):
+            except (UserPrivacyRestrictedError, InputUserDeactivatedError, PeerIdInvalidError, 
+                    UserIsBlockedError, ChatWriteForbiddenError):
                 failed += 1
             except Exception as e:
-                logger.warning(f"Не удалось отправить {user.id}: {e}")
+                logger.warning(f"Не удалось отправить {user.id}: {type(e).__name__} - {e}")
                 failed += 1
 
         offset += len(participants.users)
