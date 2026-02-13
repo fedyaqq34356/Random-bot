@@ -595,14 +595,6 @@ For issues, questions, or suggestions:
 - **GitHub Issues:** https://github.com/fedyaqq34356/Random-bot/issues
 - **Repository:** https://github.com/fedyaqq34356/Random-bot.git
 
-## Donations
-
-If you find this bot useful, consider supporting the developer:
-
-💳 Card: `4441 1111 4085 6356`
-
-Your support helps maintain and improve the bot! ☕️
-
 ## License
 
 This project is open-source and free to use.
